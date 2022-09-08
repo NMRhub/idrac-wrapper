@@ -1,3 +1,7 @@
+Copyright (c) 2022 The Center for Biomolecular NMR Data Processing and Analysis
+Based on GPL v3 code from  https://github.com/dell/iDRAC-Redfish-Scripting
+Includes BSD code from https://github.com/DMTF/python-redfish-library.git
+---
                     GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
