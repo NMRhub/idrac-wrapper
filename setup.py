@@ -6,6 +6,7 @@ with open("README.rst", "r") as fh:
 setup(name='idrac-wrapper',
       version='1.0',
       description='iDRAC redfish library wrapper',
+      url='https://github.com/NMRhub/idrac-wrapper',
       long_description_content_type='text/x-rst',
       long_description = readme_long_description,
       maintainer='Gerard Weatherby',
