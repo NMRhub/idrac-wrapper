@@ -10,7 +10,7 @@ from idrac.idracaccessor import IdracAccessor
 
 def get_password():
     """Get password from console"""
-    return getpass.getpass("Enter password for iDrac")
+    return getpass.getpass("Enter password for iDrac:  ")
 
 
 def main():
@@ -58,7 +58,7 @@ def main():
         if args.eject_virtual:
             cr = idrac.eject_virtual()
             print(cr.msg)
-        if args.boot_virtual:
+        if args.next_boot_virtual:
             cr = idrac.next_boot_virtual()
             print(cr.msg)
 
