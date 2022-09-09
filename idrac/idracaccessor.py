@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 import json
+import logging
 import os
 from dataclasses import dataclass
-from typing import NamedTuple, Callable
+from typing import NamedTuple, Callable, Any
 
 import redfish
 from redfish.rest.v1 import ServerDownOrUnreachableError, RestResponse, HttpClient
 
-from idrac import ilogger
+from .objects import VirtualMedia
+
+ilogger = logging.getLogger('iDRAC')
 
 
 class CommandReply(NamedTuple):
     """Reply from commands"""
     succeeded: bool
     msg: str
+    results: Any = None
 
 
 class IDrac:
@@ -135,6 +139,28 @@ class IDrac:
         r = self.redfish_client.post(url, body={})
         return self._read_reply(r, 204, 'Ejected virtual media')
 
+    def get_virtual(self):
+        url = self.mgr_path + '/VirtualMedia'
+        r = self.redfish_client.get(url)
+        if r.status == 200:
+            result = []
+            devices = []
+            data = json.loads(r.text)
+            for member in data['Members']:
+                ds = member['@odata.id'].split('/')
+                devices.append(ds[-1])
+            for dev in devices:
+                url = self.mgr_path + '/VirtualMedia/' + dev
+                r2 = self.redfish_client.get(url)
+                if r.status == 200:
+                    rdata = json.loads(r2.text)
+                    result.append(VirtualMedia(rdata))
+                else:
+                    return self._read_reply(200,"get virtual")
+            return CommandReply(True,"Devices",result)
+        #else implicit
+        return self._read_reply(200, "get virtual")
+
     def next_boot_virtual(self) -> CommandReply:
         """Set next boot to Virtual CD/DVD/ISO"""
         url = self.mgr_path + '/Actions/Oem/EID_674_Manager.ImportSystemConfiguration'
@@ -151,23 +177,23 @@ class IDrac:
 class IdracAccessor:
     """Manager to store session data for iDRACs"""
 
-    def __init__(self, session_data_filename=f"/tmp/idracacessor{os.getuid()}.dat"):
+    def __init__(self, session_data_filename=f"/tmp/idracacessor{os.getuid()}.dat",
+                 *, password_fn: Callable[[],str] = None):
         self.state_data = {'sessions': {}}
         self.session_data = session_data_filename
-
-    def __enter__(self):
-        """Read session key data if present"""
+        self._password_fn = password_fn
         if os.path.isfile(self.session_data):
             with open(self.session_data) as f:
                 self.state_data = json.load(f)
+
+    def __enter__(self):
+        """No op; keeps API backward compatible"""
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Store session keys"""
-        with open(self.session_data, 'w', opener=lambda name, flags: os.open(name, flags, mode=0o600)) as f:
-            json.dump(self.state_data, f)
+        pass
 
-    def connect(self, hostname:str, password_fn: Callable[[], str]) -> IDrac:
+    def connect(self, hostname:str, password_fn: Callable[[], str]=None) -> IDrac:
         """Connect with hostname or IP, method to return password if needed"""
         url = 'https://' + hostname
         sessionkey = self.state_data['sessions'].get(hostname, None)
@@ -177,7 +203,14 @@ class IdracAccessor:
             sessionkey = None
             redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
         if sessionkey is None:
-            pw = password_fn()
+            if password_fn:
+                pw = password_fn()
+            elif self._password_fn:
+                pw = self._password_fn()
+            else:
+                raise ValueError("Password function required")
             redfish_client.login(auth='session', username='root', password=pw)
-        self.state_data['sessions'][hostname] = redfish_client.get_session_key()
+            self.state_data['sessions'][hostname] = redfish_client.get_session_key()
+            with open(self.session_data, 'w', opener=lambda name, flags: os.open(name, flags, mode=0o600)) as f:
+                json.dump(self.state_data, f)
         return IDrac(hostname, redfish_client)

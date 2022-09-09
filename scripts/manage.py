@@ -4,8 +4,7 @@ import getpass
 import logging
 from pprint import pprint
 
-from idrac import ilogger
-from idrac.idracaccessor import IdracAccessor
+from idrac.idracaccessor import IdracAccessor,ilogger
 """Command line driver"""
 
 def get_password():
@@ -26,6 +25,7 @@ def main():
     group.add_argument('--force-off',action='store_true',help="TURN system off")
     group.add_argument('--on',action='store_true',help="TURN system on")
     group.add_argument('--query',help="redfish query")
+    group.add_argument('--get-virtual',action='store_true',help="get Virtual CD/DVD/ISO info")
     group.add_argument('--mount-virtual',help="Mount Virtual CD/DVD/ISO on url")
     group.add_argument('--eject-virtual',action='store_true',help="Disconnect Virtual CD/DVD/ISO")
     group.add_argument('--next-boot-virtual',action='store_true',help="Make next boot off Virtual CD/DVD/ISO")
@@ -52,6 +52,11 @@ def main():
             print(idrac.xml_metdata)
         if args.query:
             print(idrac.query(args.query))
+        if args.get_virtual:
+            cr = idrac.get_virtual()
+            if cr.succeeded:
+                for d in cr.results:
+                    print(d)
         if args.mount_virtual:
             cr =idrac.mount_virtual(args.mount_virtual)
             print(cr.msg)
