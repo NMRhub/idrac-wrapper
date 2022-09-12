@@ -1,3 +1,4 @@
+import json
 
 
 class VirtualMedia:
@@ -16,3 +17,9 @@ class VirtualMedia:
         if self.name:
             return f"{self.device}: {self.name}"
         return f"{self.device}: empty"
+
+class JobStatus:
+
+    def __init__(self,r):
+        self.status = r.status
+        self.data = json.loads(r.text)

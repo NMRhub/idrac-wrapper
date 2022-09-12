@@ -25,6 +25,7 @@ def main():
     group.add_argument('--force-off',action='store_true',help="TURN system off")
     group.add_argument('--on',action='store_true',help="TURN system on")
     group.add_argument('--query',help="redfish query")
+    group.add_argument('--tasks',action='store_true',help="Get tasks")
     group.add_argument('--get-virtual',action='store_true',help="get Virtual CD/DVD/ISO info")
     group.add_argument('--mount-virtual',help="Mount Virtual CD/DVD/ISO on url")
     group.add_argument('--eject-virtual',action='store_true',help="Disconnect Virtual CD/DVD/ISO")
@@ -65,7 +66,11 @@ def main():
             print(cr.msg)
         if args.next_boot_virtual:
             cr = idrac.next_boot_virtual()
-            print(cr.msg)
+            print(f'{cr.msg} {cr.job}\nWaiting for completion')
+            idrac.wait_for(cr.job)
+
+        if args.tasks:
+            idrac.tasks()
 
 
 if __name__ == "__main__":

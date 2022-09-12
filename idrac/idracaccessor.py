@@ -2,13 +2,14 @@
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
-from typing import NamedTuple, Callable, Any
+from typing import NamedTuple, Callable, Any, Optional, Dict
 
 import redfish
 from redfish.rest.v1 import ServerDownOrUnreachableError, RestResponse, HttpClient
 
-from .objects import VirtualMedia
+from .objects import VirtualMedia, JobStatus
 
 ilogger = logging.getLogger('iDRAC')
 
@@ -18,6 +19,7 @@ class CommandReply(NamedTuple):
     succeeded: bool
     msg: str
     results: Any = None
+    job: Optional[int] = None
 
 
 class IDrac:
@@ -80,8 +82,12 @@ class IDrac:
 
     def _read_reply(self, r: RestResponse, expected_status: int, good_message: str) -> CommandReply:
         """Read status and compare against expected status code"""
+        job_id = 0
         if r.status == expected_status:
-            return CommandReply(True, good_message)
+            if r.task_location:
+                _,jstr = r.task_location.split('_')
+                job_id = int(jstr)
+            return CommandReply(True, good_message,None,job_id)
         msg = self._message(r.text)
         ilogger.info(f"{good_message} {r.status} {msg}")
         return CommandReply(False, self._message(r.text))
@@ -138,6 +144,19 @@ class IDrac:
         url = self.mgr_path + '/VirtualMedia/CD/Actions/VirtualMedia.EjectMedia'
         r = self.redfish_client.post(url, body={})
         return self._read_reply(r, 204, 'Ejected virtual media')
+
+    def job_status(self,job_id: int):
+        """Get job status for id"""
+        r = self.redfish_client.get(f'/redfish/v1/TaskService/Tasks/JID_{job_id}')
+        jstat =  JobStatus(r)
+        if jstat.status in (200,202):
+            return jstat
+        raise ValueError(f'{jstat.status} {jstat.data}')
+
+    def wait_for(self,job_id: int):
+        """Wait for job to complete"""
+        while self.job_status(job_id).status == 202:
+            time.sleep(.1)
 
     def get_virtual(self):
         url = self.mgr_path + '/VirtualMedia'

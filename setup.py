@@ -4,7 +4,7 @@ with open("README.rst", "r") as fh:
     readme_long_description = fh.read()
 
 setup(name='idrac-wrapper',
-      version='1.1',
+      version='1.2',
       description='iDRAC redfish library wrapper',
       url='https://github.com/NMRhub/idrac-wrapper',
       long_description_content_type='text/x-rst',
