@@ -37,7 +37,6 @@ class IDrac:
         """idracname: hostname or IP"""
         self.idracname = idracname
         self.redfish_client = client
-        self._system_json = None
         mq = json.loads(self.query('/redfish/v1/Managers'))
         members = mq['Members']
         if len(members) == 1:
@@ -52,11 +51,9 @@ class IDrac:
 
     @property
     def _system(self):
-        """System data, cached"""
-        if self._system_json is None:
-            resp = self.redfish_client.get(self.sys_path)
-            self._system_json = json.loads(resp.text)
-        return self._system_json
+        """System data"""
+        resp = self.redfish_client.get(self.sys_path)
+        return json.loads(resp.text)
 
     @property
     def summary(self) -> Summary:
