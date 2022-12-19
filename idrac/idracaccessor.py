@@ -2,14 +2,20 @@
 import json
 import logging
 import os
+import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from typing import NamedTuple, Callable, Any, Optional, Dict
 
+import keyring
 import redfish
 from redfish.rest.v1 import ServerDownOrUnreachableError, RestResponse, HttpClient
 
+from . import update
 from .objects import VirtualMedia, JobStatus
+from .update import update_parameters, get_idrac_version, download_image_payload, install_image_payload, \
+    check_job_status,idrac_ip
 
 ilogger = logging.getLogger('iDRAC')
 
@@ -33,7 +39,7 @@ class IDrac:
         power: str
         health: str
 
-    def __init__(self, idracname, client:HttpClient):
+    def __init__(self, idracname, client:HttpClient,sessionkey=None):
         """idracname: hostname or IP"""
         self.idracname = idracname
         self.redfish_client = client
@@ -42,11 +48,17 @@ class IDrac:
         if len(members) == 1:
             self.mgr_path = members[0].get('@odata.id')
         self.sys_path = '/redfish/v1/Systems/System.Embedded.1'
+        self.session_key = sessionkey
 
     @property
     def schemas(self):
         """Get schemas"""
         s = self.redfish_client.get('/redfish/v1/JSONSchemas')
+        return s
+    @property
+    def updates(self):
+        """Get schemas"""
+        s = self.redfish_client.get('/redfish/v1/UpdateService')
         return s
 
     @property
@@ -189,11 +201,70 @@ class IDrac:
         r = self.redfish_client.post(url, body=payload)
         return self._read_reply(r, 202, 'Boot set to DVD')
 
+    def _check(self,response,code):
+        if response.status != code:
+            raise ValueError(response)
+    def update(self,filename):
+        update.idrac_ip = self.idracname
+        update_parameters['ip'] = self.idracname
+        update_parameters['u'] = None
+        update_parameters['p'] = None
+        update_parameters['x'] = self.session_key
+        update_parameters['reboot'] = True
+
+        fpath = os.path.abspath(filename)
+        update_parameters['location'] = os.path.dirname(fpath)
+        update_parameters['image'] = os.path.basename(fpath)
+        get_idrac_version()
+        download_image_payload()
+        install_image_payload()
+        check_job_status()
+
+    def tsr(self):
+        if 'DISPLAY' not in os.environ:
+            raise ValueError(
+                "DISPLAY not set. Run in graphical terminal to allow download with browser after collection")
+
+
+        dellscript = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  '..','dell','SupportAssistCollectionLocalREDFISH.py')
+        if not os.path.isfile(dellscript):
+            raise ValueError(f"{dellscript} not found")
+        cmd = (sys.executable,dellscript,'-ip',self.idracname,'-x',self.session_key,'--export','--data','0,1')
+        print(' '.join(cmd))
+        subprocess.run(cmd,input='y\n',text=True)
+
+
+
+
+#        files = {'files': (filename, open(filename, 'rb'), 'multipart/form-data')}
+#        url = self.updates.dict['HttpPushUri']
+#        gresponse = self.redfish_client.get(url)
+#        self._check(gresponse,200)
+#
+#        etag = gresponse.getheader('ETag')
+#
+#
+#        headers = {'Content-Type': 'multipart/form-data','if-match':etag}
+#        response = self.redfish_client.post(url,body=files,headers=headers)
+#        if response.status == 503:
+#            avail = self.redfish_client.get('/redfish/v1/UpdateService/FirmwareInventory/Available')
+#            print(avail)
+#            id = 'Available-107649-3.72__RAID.Backplane.Firmware.2'
+#        else:
+#            self._check(response,201)
+#            id = response.dict['Id']
+#        payload = {f"ImageURI":f"{url}/{id}","@Redfish.OperationApplyTime": "Immediate"}
+#        jdata = json.dumps(payload)
+#        iurl = 'redfish/v1/UpdateService/Actions/UpdateService.SimpleUpdate'
+#        r = self.redfish_client.post(iurl,body=jdata)
+#        print(r)
+
 
 class IdracAccessor:
     """Manager to store session data for iDRACs"""
 
-    def __init__(self, session_data_filename=f"/tmp/idracacessor{os.getuid()}.dat",
+    def __init__(self, session_data_filename=f"/var/tmp/idracacessor{os.getuid()}.dat",
                  *, password_fn: Callable[[],str] = None):
         self.state_data = {'sessions': {}}
         self.session_data = session_data_filename
@@ -219,14 +290,21 @@ class IdracAccessor:
             sessionkey = None
             redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
         if sessionkey is None:
-            if password_fn:
-                pw = password_fn()
-            elif self._password_fn:
-                pw = self._password_fn()
-            else:
-                raise ValueError("Password function required")
+            print("Querying keyring",file=sys.stderr)
+            pw = keyring.get_password('idrac','root')
+            good_keyring = pw is not None
+            if not good_keyring:
+                print("No keyring password")
+                if password_fn:
+                    pw = password_fn()
+                elif self._password_fn:
+                    pw = self._password_fn()
+                else:
+                    raise ValueError("Password function required")
             redfish_client.login(auth='session', username='root', password=pw)
-            self.state_data['sessions'][hostname] = redfish_client.get_session_key()
+            self.state_data['sessions'][hostname] = sessionkey = redfish_client.get_session_key()
             with open(self.session_data, 'w', opener=lambda name, flags: os.open(name, flags, mode=0o600)) as f:
                 json.dump(self.state_data, f)
-        return IDrac(hostname, redfish_client)
+            if not good_keyring:
+                keyring.set_password('idrac','root',pw)
+        return IDrac(hostname, redfish_client,sessionkey)

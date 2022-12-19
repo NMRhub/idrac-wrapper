@@ -10,10 +10,10 @@ setup(name='idrac-wrapper',
       long_description_content_type='text/x-rst',
       long_description = readme_long_description,
       maintainer='Gerard Weatherby',
-      install_requires=['redfish'],
+      install_requires=['redfish','keyring'],
       maintainer_email='gweatherby@uchc.edu',
       packages=[
-          'idrac','scripts'
+          'idrac','scripts','dell'
       ],
       entry_points={
           'console_scripts':
