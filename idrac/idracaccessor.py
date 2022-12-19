@@ -10,6 +10,7 @@ from typing import NamedTuple, Callable, Any, Optional, Dict
 
 import keyring
 import redfish
+from keyring.errors import KeyringLocked
 from redfish.rest.v1 import ServerDownOrUnreachableError, RestResponse, HttpClient
 
 from . import update
@@ -291,8 +292,12 @@ class IdracAccessor:
             redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
         if sessionkey is None:
             print("Querying keyring",file=sys.stderr)
-            pw = keyring.get_password('idrac','root')
-            good_keyring = pw is not None
+            try:
+                pw = keyring.get_password('idrac','root')
+                good_keyring = pw is not None
+            except KeyringLocked:
+                print("Keyring locked",file=sys.stderr)
+                good_keyring = False
             if not good_keyring:
                 print("No keyring password")
                 if password_fn:
@@ -305,6 +310,9 @@ class IdracAccessor:
             self.state_data['sessions'][hostname] = sessionkey = redfish_client.get_session_key()
             with open(self.session_data, 'w', opener=lambda name, flags: os.open(name, flags, mode=0o600)) as f:
                 json.dump(self.state_data, f)
-            if not good_keyring:
-                keyring.set_password('idrac','root',pw)
+            try:
+                if not good_keyring:
+                    keyring.set_password('idrac','root',pw)
+            except KeyringLocked:
+                pass
         return IDrac(hostname, redfish_client,sessionkey)
