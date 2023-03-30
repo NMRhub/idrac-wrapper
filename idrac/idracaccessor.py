@@ -202,6 +202,18 @@ class IDrac:
         r = self.redfish_client.post(url, body=payload)
         return self._read_reply(r, 202, 'Boot set to DVD')
 
+    def next_boot_pxe(self) -> CommandReply:
+        """Set next boot to PXE"""
+        url = self.mgr_path + '/Actions/Oem/EID_674_Manager.ImportSystemConfiguration'
+        payload = {"ShareParameters":
+                       {"Target": "ALL"},
+                   "ImportBuffer":
+                       '<SystemConfiguration><Component FQDD="iDRAC.Embedded.1">'
+                       '<Attribute Name="ServerBoot.1#BootOnce">Enabled</Attribute>'
+                       '<Attribute Name="ServerBoot.1#FirstBootDevice">PXE</Attribute></Component></SystemConfiguration>'}
+        r = self.redfish_client.post(url, body=payload)
+        return self._read_reply(r, 202, 'Boot set to PXE')
+
     def _check(self,response,code):
         if response.status != code:
             raise ValueError(response)

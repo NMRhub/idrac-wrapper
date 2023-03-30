@@ -30,6 +30,7 @@ def main():
     group.add_argument('--mount-virtual',help="Mount Virtual CD/DVD/ISO on url")
     group.add_argument('--eject-virtual',action='store_true',help="Disconnect Virtual CD/DVD/ISO")
     group.add_argument('--next-boot-virtual',action='store_true',help="Make next boot off Virtual CD/DVD/ISO")
+    group.add_argument('--pxe-boot',action='store_true',help="Make next boot PXE")
     group.add_argument('--update',help="Apply update")
     group.add_argument('--tsr',action='store_true',help="Generate TSR")
 
@@ -68,6 +69,10 @@ def main():
             print(cr.msg)
         if args.next_boot_virtual:
             cr = idrac.next_boot_virtual()
+            print(f'{cr.msg} {cr.job}\nWaiting for completion')
+            idrac.wait_for(cr.job)
+        if args.pxe_boot:
+            cr = idrac.next_boot_pxe()
             print(f'{cr.msg} {cr.job}\nWaiting for completion')
             idrac.wait_for(cr.job)
         if args.update:
