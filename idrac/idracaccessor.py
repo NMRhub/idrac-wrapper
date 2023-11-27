@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from typing import NamedTuple, Callable, Any, Optional, Dict
+from typing import NamedTuple, Callable, Any, Optional
 
 import keyring
 import redfish
@@ -16,7 +16,7 @@ from redfish.rest.v1 import ServerDownOrUnreachableError, RestResponse, HttpClie
 from . import update
 from .objects import VirtualMedia, JobStatus
 from .update import update_parameters, get_idrac_version, download_image_payload, install_image_payload, \
-    check_job_status,idrac_ip
+    check_job_status
 
 ilogger = logging.getLogger('iDRAC')
 
@@ -30,7 +30,6 @@ class CommandReply(NamedTuple):
 
 
 class IDrac:
-
     @dataclass
     class Summary:
         """Basic iDrac information"""
@@ -40,12 +39,12 @@ class IDrac:
         power: str
         health: str
 
-    def __init__(self, idracname, client:HttpClient,sessionkey=None):
+    def __init__(self, idracname, client: HttpClient, sessionkey=None):
         """idracname: hostname or IP"""
         self.idracname = idracname
         self.redfish_client = client
         mq = json.loads(self.query('/redfish/v1/Managers'))
-        members = mq['Members']
+        members = mq['Members']  # failed once 2023-Apr-4
         if len(members) == 1:
             self.mgr_path = members[0].get('@odata.id')
         self.sys_path = '/redfish/v1/Systems/System.Embedded.1'
@@ -56,6 +55,7 @@ class IDrac:
         """Get schemas"""
         s = self.redfish_client.get('/redfish/v1/JSONSchemas')
         return s
+
     @property
     def updates(self):
         """Get schemas"""
@@ -95,9 +95,9 @@ class IDrac:
         job_id = 0
         if r.status == expected_status:
             if r.task_location:
-                _,jstr = r.task_location.split('_')
+                _, jstr = r.task_location.split('_')
                 job_id = int(jstr)
-            return CommandReply(True, good_message,None,job_id)
+            return CommandReply(True, good_message, None, job_id)
         msg = self._message(r.text)
         ilogger.info(f"{good_message} {r.status} {msg}")
         return CommandReply(False, self._message(r.text))
@@ -155,18 +155,21 @@ class IDrac:
         r = self.redfish_client.post(url, body={})
         return self._read_reply(r, 204, 'Ejected virtual media')
 
-    def job_status(self,job_id: int):
+    def job_status(self, job_id: int, *, allow404: bool = False) -> JobStatus:
         """Get job status for id"""
         r = self.redfish_client.get(f'/redfish/v1/TaskService/Tasks/JID_{job_id}')
-        jstat =  JobStatus(r)
-        if jstat.status in (200,202):
+        jstat = JobStatus(r)
+        if jstat.status in (200, 202):
+            return jstat
+        if allow404 and jstat.status == 404:
             return jstat
         raise ValueError(f'{jstat.status} {jstat.data}')
 
-    def wait_for(self,job_id: int):
+    def wait_for(self, job_id: int, *, allow404: bool = False) -> JobStatus:
         """Wait for job to complete"""
-        while self.job_status(job_id).status == 202:
+        while (jstat := self.job_status(job_id, allow404=allow404)).status == 202:
             time.sleep(.1)
+        return jstat
 
     def get_virtual(self):
         url = self.mgr_path + '/VirtualMedia'
@@ -185,9 +188,9 @@ class IDrac:
                     rdata = json.loads(r2.text)
                     result.append(VirtualMedia(rdata))
                 else:
-                    return self._read_reply(200,"get virtual")
-            return CommandReply(True,"Devices",result)
-        #else implicit
+                    return self._read_reply(200, "get virtual")
+            return CommandReply(True, "Devices", result)
+        # else implicit
         return self._read_reply(200, "get virtual")
 
     def next_boot_virtual(self) -> CommandReply:
@@ -214,10 +217,11 @@ class IDrac:
         r = self.redfish_client.post(url, body=payload)
         return self._read_reply(r, 202, 'Boot set to PXE')
 
-    def _check(self,response,code):
+    def _check(self, response, code):
         if response.status != code:
             raise ValueError(response)
-    def update(self,filename):
+
+    def update(self, filename):
         update.idrac_ip = self.idracname
         update_parameters['ip'] = self.idracname
         update_parameters['u'] = None
@@ -238,16 +242,13 @@ class IDrac:
             raise ValueError(
                 "DISPLAY not set. Run in graphical terminal to allow download with browser after collection")
 
-
         dellscript = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                  '..','dell','SupportAssistCollectionLocalREDFISH.py')
+                                  '..', 'dell', 'SupportAssistCollectionLocalREDFISH.py')
         if not os.path.isfile(dellscript):
             raise ValueError(f"{dellscript} not found")
-        cmd = (sys.executable,dellscript,'-ip',self.idracname,'-x',self.session_key,'--export','--data','0,1')
+        cmd = (sys.executable, dellscript, '-ip', self.idracname, '-x', self.session_key, '--export', '--data', '0,1')
         print(' '.join(cmd))
-        subprocess.run(cmd,input='y\n',text=True)
-
-
+        subprocess.run(cmd, input='y\n', text=True)
 
 
 #        files = {'files': (filename, open(filename, 'rb'), 'multipart/form-data')}
@@ -278,7 +279,7 @@ class IdracAccessor:
     """Manager to store session data for iDRACs"""
 
     def __init__(self, session_data_filename=f"/var/tmp/idracacessor{os.getuid()}.dat",
-                 *, password_fn: Callable[[],str] = None):
+                 *, password_fn: Callable[[], str] = None):
         self.state_data = {'sessions': {}}
         self.session_data = session_data_filename
         self._password_fn = password_fn
@@ -293,7 +294,7 @@ class IdracAccessor:
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def connect(self, hostname:str, password_fn: Callable[[], str]=None) -> IDrac:
+    def connect(self, hostname: str, password_fn: Callable[[], str] = None) -> IDrac:
         """Connect with hostname or IP, method to return password if needed"""
         url = 'https://' + hostname
         sessionkey = self.state_data['sessions'].get(hostname, None)
@@ -303,12 +304,12 @@ class IdracAccessor:
             sessionkey = None
             redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
         if sessionkey is None:
-            print("Querying keyring",file=sys.stderr)
+            print("Querying keyring", file=sys.stderr)
             try:
-                pw = keyring.get_password('idrac','root')
+                pw = keyring.get_password('idrac', 'root')
                 good_keyring = pw is not None
             except KeyringLocked:
-                print("Keyring locked",file=sys.stderr)
+                print("Keyring locked", file=sys.stderr)
                 good_keyring = False
             if not good_keyring:
                 print("No keyring password")
@@ -324,7 +325,7 @@ class IdracAccessor:
                 json.dump(self.state_data, f)
             try:
                 if not good_keyring:
-                    keyring.set_password('idrac','root',pw)
+                    keyring.set_password('idrac', 'root', pw)
             except KeyringLocked:
                 pass
-        return IDrac(hostname, redfish_client,sessionkey)
+        return IDrac(hostname, redfish_client, sessionkey)

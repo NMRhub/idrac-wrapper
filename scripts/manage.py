@@ -2,7 +2,9 @@
 import argparse
 import getpass
 import logging
+import redfish
 from pprint import pprint
+
 
 from idrac.idracaccessor import IdracAccessor,ilogger
 """Command line driver"""
@@ -16,6 +18,7 @@ def main():
     logging.basicConfig()
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-l', '--loglevel', default='WARN', help="Python logging level")
+    parser.add_argument('--redfish-loglevel', default='WARN',help="Loglevel of redfish package")
     parser.add_argument('idrac',help="iDract to connec to")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--summary',action='store_true',help="Show quick summary")
@@ -37,6 +40,7 @@ def main():
 
     args = parser.parse_args()
     ilogger.setLevel(getattr(logging,args.loglevel))
+    redfish.rest.v1.LOGGER.setLevel(getattr(logging,args.redfish_loglevel))
     with IdracAccessor() as accessor:
         idrac = accessor.connect(args.idrac,get_password)
         if args.off:

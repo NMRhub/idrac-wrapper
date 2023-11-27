@@ -4,13 +4,13 @@ with open("README.rst", "r") as fh:
     readme_long_description = fh.read()
 
 setup(name='idrac-wrapper',
-      version='1.3',
+      version='1.4',
       description='iDRAC redfish library wrapper',
       url='https://github.com/NMRhub/idrac-wrapper',
       long_description_content_type='text/x-rst',
       long_description = readme_long_description,
       maintainer='Gerard Weatherby',
-      install_requires=['redfish','keyring'],
+      install_requires=['requests','redfish','keyring'],
       maintainer_email='gweatherby@uchc.edu',
       packages=[
           'idrac','scripts','dell'
