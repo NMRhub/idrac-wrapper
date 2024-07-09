@@ -246,7 +246,8 @@ class IDrac:
                                   '..', 'dell', 'SupportAssistCollectionLocalREDFISH.py')
         if not os.path.isfile(dellscript):
             raise ValueError(f"{dellscript} not found")
-        cmd = (sys.executable, dellscript, '-ip', self.idracname, '-x', self.session_key, '--export', '--data', '0,1')
+        cmd = (sys.executable, dellscript, '-ip', self.idracname, '-x', self.session_key,
+               '--accept','--export', '--data', '0,1')
         print(' '.join(cmd))
         subprocess.run(cmd, input='y\n', text=True)
 
