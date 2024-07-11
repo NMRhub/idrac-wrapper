@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from typing import NamedTuple, Callable, Any, Optional
+from typing import NamedTuple, Callable, Any, Optional, Generator, Mapping
 
 import keyring
 import redfish
@@ -27,6 +27,17 @@ class CommandReply(NamedTuple):
     msg: str
     results: Any = None
     job: Optional[int] = None
+
+
+@dataclass
+class Account:
+    id: int
+    enabled: bool
+    name: str
+    role: str
+
+
+ROLES = ('Administrator', 'Operator', 'ReadOnly', 'None')
 
 
 class IDrac:
@@ -105,9 +116,11 @@ class IDrac:
     def query(self, query):
         """Arbitrary query"""
         s = self.redfish_client.get(query)
-        if s.status == 200:
-            return s.text
         return s.text
+
+    def patch(self, url:str,data:Mapping):
+        s = self.redfish_client.patch(url,body=data)
+        return s
 
     # def server_control_profile(self):
     # """Future use, maybe"""
@@ -247,14 +260,58 @@ class IDrac:
         if not os.path.isfile(dellscript):
             raise ValueError(f"{dellscript} not found")
         cmd = (sys.executable, dellscript, '-ip', self.idracname, '-x', self.session_key,
-               '--accept','--export', '--data', '0,1')
+               '--accept', '--export', '--data', '0,1')
         print(' '.join(cmd))
         subprocess.run(cmd, input='y\n', text=True)
+
+    def accounts(self) -> Generator[Account, None, None]:
+        y = '/redfish/v1/Managers/iDRAC.Embedded.1/Accounts?$expand=*($levels=1)'
+        # mq = json.loads(self.query('/redfish/v1/Managers/iDRAC.Embedded.1/Accounts?$expand=*($levels=1'))
+        mq = json.loads(self.query(y))
+        for m in mq['Members']:
+            assert m['Description'] == 'User Account'
+            yield Account(int(m['Id']), m['Enabled'], m['UserName'], m['RoleId'])
+
+    def unused_account_slot(self):
+        current: Account
+        for current in self.accounts():
+            if current.id > 1 and not current.enabled and current.name == '':
+                return current.id
+        raise ValueError("All account slots in use")
+
+
+    def create_account(self, slot: int, name: str, password: str, role: str):
+        if not role in ROLES:
+            raise ValueError(f"Role {role} must in bin {','.join(ROLES)}")
+        existing = list(self.accounts())
+        used = [e for e in existing if e.name == name]
+        if used:
+            ilogger.warning(f"{self.idracname} already has account {name}")
+            return
+        for current in existing:
+            if current.id == slot:
+                break
+        else:
+            raise ValueError(f"slot {slot} not found")
+
+        # noinspection PyUnboundLocalVariable
+        if current.enabled or current.name != '':
+            raise ValueError(f"Account {slot} in use")
+        url = f'/redfish/v1/Managers/iDRAC.Embedded.1/Accounts/{slot}'
+        payload = {'UserName': name,
+                   'Password': password,
+                   'RoleId': role,
+                   'Enabled': True}
+        r = self.patch(url,payload)
+        if r.status == 200 and hasattr(r,"text"):
+            print(r.text)
+        else:
+            ilogger.warning(r)
 
 
 #        files = {'files': (filename, open(filename, 'rb'), 'multipart/form-data')}
 #        url = self.updates.dict['HttpPushUri']
-#        gresponse = self.redfish_client.get(url)
+#        gresponse = self.redfish_client.get(url)kk
 #        self._check(gresponse,200)
 #
 #        etag = gresponse.getheader('ETag')

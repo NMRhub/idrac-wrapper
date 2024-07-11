@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 import argparse
-import getpass
 import logging
 import redfish
 from pprint import pprint
 
 
 from idrac.idracaccessor import IdracAccessor,ilogger
-"""Command line driver"""
+from scripts import get_password
 
-def get_password():
-    """Get password from console"""
-    return getpass.getpass("Enter password for iDrac:  ")
+"""Command line driver"""
 
 
 def main():
@@ -42,7 +39,7 @@ def main():
     ilogger.setLevel(getattr(logging,args.loglevel))
     redfish.rest.v1.LOGGER.setLevel(getattr(logging,args.redfish_loglevel))
     with IdracAccessor() as accessor:
-        idrac = accessor.connect(args.idrac,get_password)
+        idrac = accessor.connect(args.idrac, get_password)
         if args.off:
             cr =idrac.turn_off()
             print(cr.msg)
@@ -84,8 +81,6 @@ def main():
         if args.tsr:
             idrac.tsr()
 
-        if args.tasks:
-            idrac.tasks()
 
 
 if __name__ == "__main__":
