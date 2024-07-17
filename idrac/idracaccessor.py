@@ -11,7 +11,7 @@ from typing import NamedTuple, Callable, Any, Optional, Generator, Mapping
 import keyring
 import redfish
 from keyring.errors import KeyringLocked
-from redfish.rest.v1 import ServerDownOrUnreachableError, RestResponse, HttpClient
+from redfish.rest.v1 import ServerDownOrUnreachableError, RestResponse, HttpClient, InvalidCredentialsError
 
 from . import update
 from .objects import VirtualMedia, JobStatus
@@ -269,7 +269,8 @@ class IDrac:
         # mq = json.loads(self.query('/redfish/v1/Managers/iDRAC.Embedded.1/Accounts?$expand=*($levels=1'))
         mq = json.loads(self.query(y))
         for m in mq['Members']:
-            assert m['Description'] == 'User Account'
+            if (d := m.get('Description',None)) is not None and d != 'User Account':
+                raise ValueError('Unexpected type')
             yield Account(int(m['Id']), m['Enabled'], m['UserName'], m['RoleId'])
 
     def unused_account_slot(self):
@@ -308,6 +309,21 @@ class IDrac:
         else:
             ilogger.warning(r)
 
+    def set_password(self, name: str, password: str):
+        existing = list(self.accounts())
+        used = [e for e in existing if e.name == name]
+        if not used:
+            ilogger.warning(f"{self.idracname} does not have account {name}" )
+            return
+        slot = used[0].id
+        url = f'/redfish/v1/Managers/iDRAC.Embedded.1/Accounts/{slot}'
+        payload = {'Password': password}
+        r = self.patch(url,payload)
+        if r.status == 200 and hasattr(r,"text"):
+            print(r.text)
+        else:
+            ilogger.warning(r)
+
 
 #        files = {'files': (filename, open(filename, 'rb'), 'multipart/form-data')}
 #        url = self.updates.dict['HttpPushUri']
@@ -337,10 +353,10 @@ class IdracAccessor:
     """Manager to store session data for iDRACs"""
 
     def __init__(self, session_data_filename=f"/var/tmp/idracacessor{os.getuid()}.dat",
-                 *, password_fn: Callable[[], str] = None):
+                 *, login:str = 'root'):
         self.state_data = {'sessions': {}}
         self.session_data = session_data_filename
-        self._password_fn = password_fn
+        self.login_account = login
         if os.path.isfile(self.session_data):
             with open(self.session_data) as f:
                 self.state_data = json.load(f)
@@ -352,38 +368,49 @@ class IdracAccessor:
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
 
-    def connect(self, hostname: str, password_fn: Callable[[], str] = None) -> IDrac:
+
+    def _login(self,hostname,starting_pw):
+        pw  = starting_pw
+        while True:
+            try:
+                ilogger.debug(f"Trying {hostname}  {self.login_account}, password {pw}")
+                self.redfish_client.login(auth='session', username=self.login_account, password=pw)
+                return pw
+            except InvalidCredentialsError as ice:
+                if '401' in str(ice):
+                    print(f"Password {pw} failed for {self.login_account}")
+                    pw = self.password_fn()
+
+    def connect(self, hostname: str, password_fn: Callable[[], str] ) -> IDrac:
         """Connect with hostname or IP, method to return password if needed"""
+        self.password_fn = password_fn
         url = 'https://' + hostname
-        sessionkey = self.state_data['sessions'].get(hostname, None)
+        sessionkey = None
         try:
-            redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
+            self.redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
+            ilogger.debug(f"Connect {hostname} with session key")
         except ServerDownOrUnreachableError:
             sessionkey = None
-            redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
+            self.redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
         if sessionkey is None:
-            print("Querying keyring", file=sys.stderr)
+            pw = None
             try:
-                pw = keyring.get_password('idrac', 'root')
+                pw = keyring.get_password('idrac', self.login_account)
                 good_keyring = pw is not None
             except KeyringLocked:
                 print("Keyring locked", file=sys.stderr)
                 good_keyring = False
             if not good_keyring:
                 print("No keyring password")
-                if password_fn:
-                    pw = password_fn()
-                elif self._password_fn:
-                    pw = self._password_fn()
-                else:
-                    raise ValueError("Password function required")
-            redfish_client.login(auth='session', username='root', password=pw)
-            self.state_data['sessions'][hostname] = sessionkey = redfish_client.get_session_key()
+                pw = self.password_fn()
+            pw = self._login(hostname,pw)
+            ilogger.debug(f"Connected {hostname} as {self.login_account}, saved session key")
             with open(self.session_data, 'w', opener=lambda name, flags: os.open(name, flags, mode=0o600)) as f:
                 json.dump(self.state_data, f)
             try:
                 if not good_keyring:
-                    keyring.set_password('idrac', 'root', pw)
+                    ilogger.debug(f"Saving idrac {self.login_account} password to keyring")
+                    keyring.set_password('idrac', self.login_account, pw)
             except KeyringLocked:
                 pass
-        return IDrac(hostname, redfish_client, sessionkey)
+        return IDrac(hostname, self.redfish_client, sessionkey)

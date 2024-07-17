@@ -19,6 +19,7 @@ setup(name='idrac-wrapper',
           'console_scripts':
               [
                   'idrac = scripts.manage:main',
+                  'accounts = scripts.accounts:main',
               ]
       }
 )
