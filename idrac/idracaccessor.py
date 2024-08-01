@@ -2,11 +2,12 @@
 import json
 import logging
 import os
+import socket
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from typing import NamedTuple, Callable, Any, Optional, Generator, Mapping
+from typing import NamedTuple, Callable, Any, Optional, Generator, Mapping, ClassVar
 
 import keyring
 import redfish
@@ -49,6 +50,18 @@ class IDrac:
         service_tag: str
         power: str
         health: str
+        only_ip : ClassVar[bool] = False
+
+        def __post_init__(self):
+            self.ip = socket.gethostbyname(self.idrac)
+
+
+        def __str__(self):
+            if self.only_ip:
+                return f"{self.ip} {self.hostname} {self.service_tag} {self.power} health {self.health}"
+            return f"iDRAC: {self.idrac} {self.ip} {self.service_tag} server: {self.power} health {self.health}"
+
+
 
     def __init__(self, idracname, client: HttpClient, sessionkey=None):
         """idracname: hostname or IP"""
@@ -324,6 +337,32 @@ class IDrac:
         else:
             ilogger.warning(r)
 
+    
+    def _archive_dir(self,spec:str,fetch:bool):
+        """Set archive dir or fetch last"""
+        if fetch:
+            url = '/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.SupportAssistExportLastCollection'
+        else:
+            url = '/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellLCService/Actions/DellLCService.SupportAssistCollection'
+        ip, exprt = spec.split(':')
+        payload = {"IPAddress":ip,
+                   "ShareName":exprt,
+                   "ShareType":'NFS'
+                   }
+        r = self.redfish_client.post(url,body=payload)
+        if r.status == 202 and hasattr(r,"text"):
+            ilogger.info(f"NFS archive set to {ip} {exprt}")
+            print(r.text)
+        else:
+            ilogger.warning(r)
+
+    def set_archive_dir(self,spec:str):
+        """Set archive dir"""
+        self._archive_dir(spec,False)
+
+    def get_last_collection(self,spec:str):
+        """Fetch last"""
+        self._archive_dir(spec,True)
 
 #        files = {'files': (filename, open(filename, 'rb'), 'multipart/form-data')}
 #        url = self.updates.dict['HttpPushUri']
@@ -366,7 +405,10 @@ class IdracAccessor:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+        try:
+            self.redfish_client.logout()
+        except Exception:
+            ilogger.exception("logout error")
 
 
     def _login(self,hostname,starting_pw):
@@ -390,8 +432,7 @@ class IdracAccessor:
             self.redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
             ilogger.debug(f"Connect {hostname} with session key")
         except ServerDownOrUnreachableError:
-            sessionkey = None
-            self.redfish_client = redfish.redfish_client(url, sessionkey=sessionkey)
+            self.redfish_client = redfish.redfish_client(url, sessionkey=(sessionkey := None))
         if sessionkey is None:
             pw = None
             try:

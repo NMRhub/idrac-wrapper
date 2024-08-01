@@ -20,6 +20,7 @@ setup(name='idrac-wrapper',
               [
                   'idrac = scripts.manage:main',
                   'accounts = scripts.accounts:main',
+                  'tsr = scripts.tsr:main',
               ]
       }
 )

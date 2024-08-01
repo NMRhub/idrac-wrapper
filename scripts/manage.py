@@ -5,7 +5,7 @@ import redfish
 from pprint import pprint
 
 
-from idrac.idracaccessor import IdracAccessor,ilogger
+from idrac.idracaccessor import IdracAccessor, ilogger, IDrac
 from scripts import get_password
 
 """Command line driver"""
@@ -16,7 +16,9 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-l', '--loglevel', default='WARN', help="Python logging level")
     parser.add_argument('--redfish-loglevel', default='WARN',help="Loglevel of redfish package")
-    parser.add_argument('idrac',help="iDract to connec to")
+    parser.add_argument('idrac',help="iDrac to connect to")
+    parser.add_argument('--onlyip',action='store_true',help="Don't show idrac hostname, just ip")
+
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--summary',action='store_true',help="Show quick summary")
     group.add_argument('--dump',action='store_true',help="Dump available data")
@@ -33,9 +35,13 @@ def main():
     group.add_argument('--pxe-boot',action='store_true',help="Make next boot PXE")
     group.add_argument('--update',help="Apply update")
     group.add_argument('--tsr',action='store_true',help="Generate TSR")
+    group.add_argument('--setarchive',help="Set NFS archive directory (ip:export)")
+    group.add_argument('--last',help="Fetch last collection to NFS (ip:export)")
 
 
     args = parser.parse_args()
+    if args.onlyip:
+        IDrac.Summary.only_ip = True
     ilogger.setLevel(getattr(logging,args.loglevel))
     redfish.rest.v1.LOGGER.setLevel(getattr(logging,args.redfish_loglevel))
     with IdracAccessor() as accessor:
@@ -80,6 +86,7 @@ def main():
             idrac.update(args.update)
         if args.tsr:
             idrac.tsr()
+
 
 
 
