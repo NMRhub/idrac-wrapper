@@ -1,6 +1,11 @@
 import getpass
+import logging
+from argparse import ArgumentParser
 
 import keyring
+import redfish
+
+from idrac import ilogger
 
 
 def get_password():
@@ -33,3 +38,27 @@ class PasswordContext:
         keyring.delete_password('idrac', self.account)
         print(f"Need password for account {self.account}")
         self.password = get_password()
+
+class IdracSelector:
+    """Select iDRACs from commandline or file. Set logging level"""
+
+    def __init__(self,parser:ArgumentParser):
+        parser.add_argument('-l', '--loglevel', default='WARN', help="Python logging level")
+        parser.add_argument('--redfish-loglevel', default='WARN', help="Loglevel of redfish package")
+        systems = parser.add_mutually_exclusive_group(required=True)
+        systems.add_argument('--idrac',help='single iDrac to operate on')
+        systems.add_argument('--file',help='file with iDrac names')
+        self.parser = parser
+
+    @property
+    def idracs(self)->list[str]:
+        """List of idracs to operate on"""
+        args = self.parser.parse_args()
+        ilogger.setLevel(getattr(logging,args.loglevel))
+        redfish.rest.v1.LOGGER.setLevel(getattr(logging,args.redfish_loglevel))
+        if args.idrac:
+            return [args.idrac]
+        else:
+            with open(args.file) as f:
+                lines = [r.strip('n') for r in f ]
+                return [idr.strip('\n') for idr in lines if not idr.startswith('#') and len(idr)]

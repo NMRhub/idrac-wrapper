@@ -1,3 +1,4 @@
 import logging
-from .idracaccessor import IdracAccessor,IDrac,CommandReply
-from .objects import VirtualMedia
+ilogger = logging.getLogger('iDRAC')
+from idrac.idracaccessor import IdracAccessor
+#from idrac.objects import VirtualMedia, JobStatus

@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "idrac-wrapper"
+name = "idracwrapper"
 version = "1.4"
 maintainers = [{name = "Gerard Weatherby", email = "gweatherby@uchc.edu"}]
 description = "iDRAC redfish library wrapper"
@@ -14,6 +14,8 @@ dependencies = ["keyring", "redfish", "requests"]
 idrac = "scripts.manage:main"
 accounts = "scripts.accounts:main"
 tsr = "scripts.tsr:main"
+attribute = "scripts.attribute:main"
+
 
 [tool.setuptools]
 package-dir = { "" = "src"}

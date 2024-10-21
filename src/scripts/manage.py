@@ -4,11 +4,17 @@ import logging
 import redfish
 from pprint import pprint
 
-
-from idrac.idracaccessor import IdracAccessor, ilogger, IDrac
+from idrac import ilogger
+from idrac.idracaccessor import IdracAccessor
+from idrac.idracclass import IDrac
 from scripts import get_password
+from pprint import pprint
 
 """Command line driver"""
+
+def get(idrac:IDrac,attribute:str)->None:
+    r = idrac.get_attributes(attribute)
+    pprint(r)
 
 
 def main():
@@ -37,6 +43,7 @@ def main():
     group.add_argument('--tsr',action='store_true',help="Generate TSR")
     group.add_argument('--setarchive',help="Set NFS archive directory (ip:export)")
     group.add_argument('--last',help="Fetch last collection to NFS (ip:export)")
+    group.add_argument('--get',nargs='?',help = "get attributes")
 
 
     args = parser.parse_args()
