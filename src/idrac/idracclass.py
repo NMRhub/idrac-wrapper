@@ -11,7 +11,7 @@ from typing import NamedTuple, Any, Optional, Generator, Mapping, ClassVar
 
 from redfish.rest.v1 import RestResponse, HttpClient
 
-from idrac import ilogger, update
+from idrac import ilogger, update, PortInfo
 from idrac.objects import VirtualMedia, JobStatus
 from idrac.update import update_parameters, get_idrac_version, download_image_payload, install_image_payload, \
     check_job_status
@@ -163,6 +163,20 @@ class IDrac:
         apath = self._select_attribute(path, attribute)
         s = self.query(apath)
         return json.loads(s)
+
+    def switch_connections(self):
+        rval = []
+        path = '/redfish/v1/Systems/System.Embedded.1/NetworkPorts/Oem/Dell/DellSwitchConnections'
+        s = self.query(path)
+        data = json.loads(s)
+        for m in data['Members']:
+            sl = m['SwitchConnectionID']
+            sp = m['SwitchPortConnectionID']
+            if sl != 'No Link':
+                iname = m['FQDD']
+                rval.append(PortInfo(self.idracname, iname, sl, sp))
+
+        return rval
 
 
     def _message(self, reply_text: str) -> str:
@@ -405,7 +419,17 @@ class IDrac:
         else:
             ilogger.warning(r)
 
-    
+    def set_comment(self,comment):
+        """Set idrac comment"""
+        url = '/redfish/v1/Managers/iDRAC.Embedded.1/Oem/Dell/DellLCService/Actions/DellLCService.InsertCommentInLCLog'
+        payload = {"Comment":comment}
+        r = self.redfish_client.post(url,body=payload)
+        good =  r.status == 200
+        if not good:
+            ilogger.warning(r)
+        return good
+
+
     def _archive_dir(self,spec:str,fetch:bool):
         """Set archive dir or fetch last"""
         if fetch:

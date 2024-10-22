@@ -70,6 +70,7 @@ class IdracAccessor:
                 print("No keyring password")
                 pw = self.password_fn()
             pw = self._login(hostname,pw)
+            sessionkey = self.redfish_client.get_session_key()
             ilogger.debug(f"Connected {hostname} as {self.login_account}, saved session key")
             with open(self.session_data, 'w', opener=lambda name, flags: os.open(name, flags, mode=0o600)) as f:
                 json.dump(self.state_data, f)
