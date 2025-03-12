@@ -8,7 +8,7 @@ version = "1.4"
 maintainers = [{name = "Gerard Weatherby", email = "gweatherby@uchc.edu"}]
 description = "iDRAC redfish library wrapper"
 readme = {file = "README.rst", content-type = "text/x-rst"}
-dependencies = ["keyring", "redfish", "requests"]
+dependencies = ["keyring", "redfish", "requests","pyyaml"]
 
 [project.scripts]
 idrac = "scripts.manage:main"

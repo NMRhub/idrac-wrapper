@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import argparse
+import datetime
 import logging
-import redfish
-from pprint import pprint
+import time
 
-from idrac import ilogger
+import redfish
+import yaml
+
+from idrac import ilogger, DEFAULT_CFG
 from idrac.idracaccessor import IdracAccessor
 from idrac.idracclass import IDrac
 from scripts import get_password
@@ -16,6 +19,26 @@ def get(idrac:IDrac,attribute:str)->None:
     r = idrac.get_attributes(attribute)
     pprint(r)
 
+def read_config(file):
+    with open(file) as f:
+        return yaml.safe_load(f)
+
+def wait_for_power(idrac:IDrac,state:str,seconds:int)-> bool:
+    deadline = (start := datetime.datetime.now()) + datetime.timedelta(seconds=seconds)
+    print(f"Waiting for power to be {state}")
+    counter = 0
+    while (s := idrac.summary).power != state:
+        now = datetime.datetime.now()
+        if now > deadline:
+            print(f"Timed out, state is {s}")
+            return False
+        if counter % 5 == 0:
+            elasped = datetime.datetime.now() - start
+            print(f"{s} {elasped.total_seconds}")
+            counter += 1
+        time.sleep(1)
+    return True
+
 
 def main():
     logging.basicConfig()
@@ -24,6 +47,8 @@ def main():
     parser.add_argument('--redfish-loglevel', default='WARN',help="Loglevel of redfish package")
     parser.add_argument('idrac',help="iDrac to connect to")
     parser.add_argument('--onlyip',action='store_true',help="Don't show idrac hostname, just ip")
+    parser.add_argument('--config',default=DEFAULT_CFG,help='config file, if required')
+    parser.add_argument('--wait',type=int,default=0,help='Wait in seconds for action')
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--summary',action='store_true',help="Show quick summary")
@@ -40,10 +65,11 @@ def main():
     group.add_argument('--next-boot-virtual',action='store_true',help="Make next boot off Virtual CD/DVD/ISO")
     group.add_argument('--pxe-boot',action='store_true',help="Make next boot PXE")
     group.add_argument('--update',help="Apply update")
-    group.add_argument('--tsr',action='store_true',help="Generate TSR")
+    group.add_argument('--tsr',action='store_true',help="Generate TSR to network share. Requires config")
     group.add_argument('--setarchive',help="Set NFS archive directory (ip:export)")
     group.add_argument('--last',help="Fetch last collection to NFS (ip:export)")
     group.add_argument('--get',nargs='?',help = "get attributes")
+    group.add_argument('--reboot',action='store_true',help="reboot sequence via power ops")
 
 
     args = parser.parse_args()
@@ -52,16 +78,21 @@ def main():
     ilogger.setLevel(getattr(logging,args.loglevel))
     redfish.rest.v1.LOGGER.setLevel(getattr(logging,args.redfish_loglevel))
     with IdracAccessor() as accessor:
+        cr = None
+        powerWait = None
         idrac = accessor.connect(args.idrac, get_password)
         if args.off:
             cr =idrac.turn_off()
             print(cr.msg)
+            powerWait = 'Off'
         if args.on:
             cr = idrac.turn_on()
             print(cr.msg)
+            powerWait = 'On'
         if args.force_off:
             cr = idrac.force_off()
             print(cr.msg)
+            powerWait = 'Off'
         if args.summary:
             print(idrac.summary)
         if args.dump:
@@ -83,18 +114,34 @@ def main():
             print(cr.msg)
         if args.next_boot_virtual:
             cr = idrac.next_boot_virtual()
-            print(f'{cr.msg} {cr.job}\nWaiting for completion')
-            idrac.wait_for(cr.job)
         if args.pxe_boot:
             cr = idrac.next_boot_pxe()
-            print(f'{cr.msg} {cr.job}\nWaiting for completion')
-            idrac.wait_for(cr.job)
         if args.update:
             idrac.update(args.update)
         if args.tsr:
-            idrac.tsr()
-
-
+            idrac.tsr(read_config(args.config))
+        if args.wait:
+            deadline = (start := datetime.datetime.now()) + datetime.timedelta(seconds=args.wait)
+            if cr is not None and cr.job is not None and cr.job != 0:
+                print(f'{cr.msg} {cr.job}\nWaiting for completion')
+                idrac.wait_for(cr.job)
+            else:
+                print("Wait not applicable for specified action")
+            if powerWait is not None:
+                wait_for_power(idrac,powerWait,args.wait)
+        if args.reboot:
+            deadline = (start := datetime.datetime.now()) + datetime.timedelta(seconds=120)
+            cr =idrac.turn_off()
+            print(cr.msg)
+            if not wait_for_power(idrac, 'Off',60):
+                cr = idrac.force_off()
+                print(cr.msg)
+                if not wait_for_power(idrac, 'Off',60):
+                    raise ValueError("Force off failed")
+            cr = idrac.turn_on()
+            print(cr.msg)
+            if not wait_for_power(idrac, 'On',60):
+                raise ValueError("Power on failed")
 
 
 if __name__ == "__main__":

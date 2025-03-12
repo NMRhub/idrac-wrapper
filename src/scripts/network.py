@@ -19,9 +19,11 @@ def main():
     logging.basicConfig()
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     selector = IdracSelector(parser)
+    parser.add_argument('--filter',nargs=2,help="Filter selected attribute")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--nic')
-    group.add_argument('--switch',action='store_true')
+    group.add_argument('--nic',action='store_true')
+    group.add_argument('--adapter',action='store_true')
+    group.add_argument('--switch',action='store_true',help="Label network switch information in iDRAC")
 
 
 
@@ -31,6 +33,20 @@ def main():
         try:
             with IdracAccessor() as accessor:
                 idrac = accessor.connect(idrac, get_password)
+                if args.filter:
+                    key, value = args.filter
+                    v = getattr(idrac,key)
+                    if value not in v:
+                        ilogger.debug(f"skipping {idrac.idracname} filter {key} {value} not in  {v}")
+                        continue
+                if args.adapter:
+                    for dev, info in idrac.network_adapters.items():
+                        if (m := info.get('Model')) is not None and '710' in m:
+                            dname = dev.split('/')[-1]
+                            print(f"{idrac.idracname} {dname}")
+                            sc = idrac.switch_connections()
+                            for pi in sc:
+                                print(f"\t{pi}")
                 if args.nic:
                     print(idrac.nics)
                 if args.switch:

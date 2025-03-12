@@ -27,11 +27,13 @@ class IdracAccessor:
 
     def __enter__(self):
         """No op; keeps API backward compatible"""
+        self.redfish_client = None
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
-            self.redfish_client.logout()
+            if self.redfish_client is not None:
+                self.redfish_client.logout()
         except Exception:
             ilogger.exception("logout error")
 

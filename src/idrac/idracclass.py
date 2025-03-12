@@ -79,6 +79,13 @@ class IDrac:
         self.sys_path = '/redfish/v1/Systems/System.Embedded.1'
         self.session_key = sessionkey
 
+    def __getattr__(self, item):
+        """Get attribute from _system if not defined on class"""
+        if (v := self._system.get(item,None))  is not None:
+            return v
+        raise AttributeError(f"no attribute {item}")
+
+
     @property
     def schemas(self):
         """Get schemas"""
@@ -144,6 +151,9 @@ class IDrac:
     @cached_property
     def nics(self):
         """NIC names"""
+        url = f"/redfish/v1/Chassis/System.Embedded.1/NetworkAdapters/NIC.Integrated.1"
+        r = json.loads(self.query(url))
+        print(r)
         rval = {}
         r = json.loads(self.query('/redfish/v1/Systems/System.Embedded.1/NetworkInterfaces'))
         for nic_id in  [ m['@odata.id'].split('/')[-1] for m in r['Members']  ]:
@@ -151,6 +161,21 @@ class IDrac:
             r = json.loads(self.query(url))
             for nic_port in  [m['@odata.id'].split('/')[-1] for m in r['Members']]:
                 rval[nic_port] = nic_id
+        return rval
+
+    @cached_property
+    def network_adapters(self):
+        """NIC names"""
+        rval = {}
+        url = f"/redfish/v1/Chassis/System.Embedded.1/NetworkAdapters/"
+        r = json.loads(self.query(url))
+        for m in r['Members']:
+            for url in m.values():
+                r = json.loads(self.query(url))
+                data = {k: v for k, v in r.items() if not k.startswith('@')}
+
+                rval[data['Id']] = data
+
         return rval
 
 
@@ -344,18 +369,17 @@ class IDrac:
         install_image_payload()
         check_job_status()
 
-
-    def tsr(self):
-        if 'DISPLAY' not in os.environ:
-            raise ValueError(
-                "DISPLAY not set. Run in graphical terminal to allow download with browser after collection")
+    def tsr(self, config):
+        nfsip = config['tsr']['nfsip']
+        share = config['tsr']['share']
 
         dellscript = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                  '..', 'dell', 'SupportAssistCollectionLocalREDFISH.py')
+                                  '..', 'dell', 'SupportAssistCollectionNetworkShareREDFISH.py')
         if not os.path.isfile(dellscript):
             raise ValueError(f"{dellscript} not found")
         cmd = (sys.executable, dellscript, '-ip', self.idracname, '-x', self.session_key,
-               '--accept', '--export', '--data', '0,1')
+               '--export-network', '--sharetype', 'NFS', '--shareip', nfsip, '--sharename', share,
+               '--accept', '--data', '0,1')
         print(' '.join(cmd))
         subprocess.run(cmd, input='y\n', text=True)
 
