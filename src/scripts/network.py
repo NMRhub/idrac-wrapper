@@ -20,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     selector = IdracSelector(parser)
     parser.add_argument('--filter',nargs=2,help="Filter selected attribute")
+    parser.add_argument('--print-only',action='store_false',help="If not set, an idrac comment is added for switch connections")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--nic',action='store_true')
     group.add_argument('--adapter',action='store_true')
@@ -29,6 +30,7 @@ def main():
 
 
     args = parser.parse_args()
+    add_comment = args.print_only
     for idrac in selector.idracs:
         try:
             with IdracAccessor() as accessor:
@@ -50,10 +52,15 @@ def main():
                 if args.nic:
                     print(idrac.nics)
                 if args.switch:
-                    sc = idrac.switch_connections()
-                    for pi in sc:
-                        print(pi)
-                        idrac.set_comment(str(pi))
+                    try:
+                        sc = idrac.switch_connections()
+                        summary = idrac.summary
+                        for pi in sc:
+                            print(f"{pi.host},{pi.interface},{pi.mac_address},{pi.port_id},{summary.hostname}")
+                            if add_comment:
+                                idrac.set_comment(str(pi))
+                    except Exception as e:
+                        print(f"{idrac.idracname} error {e}", file=sys.stderr)
         except Exception as e:
             print(f"{idrac} error {e}",file=sys.stderr)
 

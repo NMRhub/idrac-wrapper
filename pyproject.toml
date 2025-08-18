@@ -11,7 +11,7 @@ readme = {file = "README.rst", content-type = "text/x-rst"}
 dependencies = ["keyring", "redfish", "requests","pyyaml"]
 
 [project.scripts]
-idrac = "scripts.manage:main"
+idrac = "scripts.main:main"
 accounts = "scripts.accounts:main"
 tsr = "scripts.tsr:main"
 attribute = "scripts.attribute:main"

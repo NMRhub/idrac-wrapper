@@ -62,7 +62,7 @@ class IDrac:
         def __str__(self):
             if self.only_ip:
                 return f"{self.ip} {self.hostname} {self.service_tag} {self.power} health {self.health}"
-            return f"iDRAC: {self.idrac} {self.ip} {self.service_tag} server: {self.power} health {self.health}"
+            return f"iDRAC: {self.idrac} {self.ip} {self.hostname} {self.service_tag} server: {self.power} health {self.health}"
 
 
 

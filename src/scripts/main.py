@@ -25,7 +25,7 @@ def read_config(file):
 
 def wait_for_power(idrac:IDrac,state:str,seconds:int)-> bool:
     deadline = (start := datetime.datetime.now()) + datetime.timedelta(seconds=seconds)
-    print(f"Waiting for power to be {state}")
+    print(f"Waiting up to {seconds} seconds for power to be {state}")
     counter = 0
     while (s := idrac.summary).power != state:
         now = datetime.datetime.now()
@@ -34,10 +34,23 @@ def wait_for_power(idrac:IDrac,state:str,seconds:int)-> bool:
             return False
         if counter % 5 == 0:
             elasped = datetime.datetime.now() - start
-            print(f"{s} {elasped.total_seconds}")
+            print(f"{s} {elasped.total_seconds()}")
             counter += 1
         time.sleep(1)
     return True
+
+def reboot(idrac):
+    cr =idrac.turn_off()
+    print(cr.msg)
+    if not wait_for_power(idrac, 'Off',60):
+        cr = idrac.force_off()
+        print(cr.msg)
+        if not wait_for_power(idrac, 'Off',60):
+            raise ValueError("Force off failed")
+    cr = idrac.turn_on()
+    print(cr.msg)
+    if not wait_for_power(idrac, 'On',60):
+        raise ValueError("Power on failed")
 
 
 def main():
@@ -64,6 +77,7 @@ def main():
     group.add_argument('--eject-virtual',action='store_true',help="Disconnect Virtual CD/DVD/ISO")
     group.add_argument('--next-boot-virtual',action='store_true',help="Make next boot off Virtual CD/DVD/ISO")
     group.add_argument('--pxe-boot',action='store_true',help="Make next boot PXE")
+    group.add_argument('--pxe-now',action='store_true',help="PXE reboot now")
     group.add_argument('--update',help="Apply update")
     group.add_argument('--tsr',action='store_true',help="Generate TSR to network share. Requires config")
     group.add_argument('--setarchive',help="Set NFS archive directory (ip:export)")
@@ -116,6 +130,9 @@ def main():
             cr = idrac.next_boot_virtual()
         if args.pxe_boot:
             cr = idrac.next_boot_pxe()
+        if args.pxe_now:
+            cr = idrac.next_boot_pxe()
+            reboot(idrac)
         if args.update:
             idrac.update(args.update)
         if args.tsr:
@@ -130,18 +147,7 @@ def main():
             if powerWait is not None:
                 wait_for_power(idrac,powerWait,args.wait)
         if args.reboot:
-            deadline = (start := datetime.datetime.now()) + datetime.timedelta(seconds=120)
-            cr =idrac.turn_off()
-            print(cr.msg)
-            if not wait_for_power(idrac, 'Off',60):
-                cr = idrac.force_off()
-                print(cr.msg)
-                if not wait_for_power(idrac, 'Off',60):
-                    raise ValueError("Force off failed")
-            cr = idrac.turn_on()
-            print(cr.msg)
-            if not wait_for_power(idrac, 'On',60):
-                raise ValueError("Power on failed")
+            reboot(idrac)
 
 
 if __name__ == "__main__":
