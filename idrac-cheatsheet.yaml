@@ -1,0 +1,3 @@
+SSDFirmware:
+  redfish path: /redfish/v1/Systems/System.Embedded.1/Storage/RAID.SL.1-1/Drives/Disk.Bay.1:Enclosure.Internal.0-1:RAID.SL.1-1
+  result path: Revision

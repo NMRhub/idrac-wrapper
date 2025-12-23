@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import datetime
+import json
 import logging
 import time
 
@@ -84,6 +85,7 @@ def main():
     group.add_argument('--last',help="Fetch last collection to NFS (ip:export)")
     group.add_argument('--get',nargs='?',help = "get attributes")
     group.add_argument('--reboot',action='store_true',help="reboot sequence via power ops")
+    group.add_argument('--schema',action='store_true',help="Dump schema")
 
 
     args = parser.parse_args()
@@ -114,7 +116,8 @@ def main():
         if args.metadata:
             print(idrac.xml_metdata)
         if args.query:
-            print(idrac.query(args.query))
+            j = json.loads(idrac.query(args.query))
+            print(json.dumps(j,indent=2,sort_keys=True))
         if args.get_virtual:
             cr = idrac.get_virtual()
             if cr.succeeded:
@@ -148,6 +151,8 @@ def main():
                 wait_for_power(idrac,powerWait,args.wait)
         if args.reboot:
             reboot(idrac)
+        if args.schema:
+            print(idrac.schemas)
 
 
 if __name__ == "__main__":

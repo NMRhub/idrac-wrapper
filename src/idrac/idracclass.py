@@ -322,29 +322,40 @@ class IDrac:
         # else implicit
         return self._read_reply(200, "get virtual")
 
-    def next_boot_virtual(self) -> CommandReply:
-        """Set next boot to Virtual CD/DVD/ISO"""
+    def set_next_boot(self, device: str) -> CommandReply:
+        """
+        Set the next boot device.
+        Common values for device:
+          - "PXE"
+          - "VCD-DVD"
+          - "BIOSSetup"
+          - "HDD"
+          - "Floppy"
+          - "None" (to clear override)
+        """
         url = self.mgr_path + '/Actions/Oem/EID_674_Manager.ImportSystemConfiguration'
-        payload = {"ShareParameters":
-                       {"Target": "ALL"},
-                   "ImportBuffer":
-                       '<SystemConfiguration><Component FQDD="iDRAC.Embedded.1">'
-                       '<Attribute Name="ServerBoot.1#BootOnce">Enabled</Attribute>'
-                       '<Attribute Name="ServerBoot.1#FirstBootDevice">VCD-DVD</Attribute></Component></SystemConfiguration>'}
+        payload = {
+            "ShareParameters": {"Target": "ALL"},
+            "ImportBuffer": (
+                '<SystemConfiguration>'
+                '<Component FQDD="iDRAC.Embedded.1">'
+                '<Attribute Name="ServerBoot.1#BootOnce">Enabled</Attribute>'
+                f'<Attribute Name="ServerBoot.1#FirstBootDevice">{device}</Attribute>'
+                '</Component>'
+                '</SystemConfiguration>'
+            )
+        }
         r = self.redfish_client.post(url, body=payload)
-        return self._read_reply(r, 202, 'Boot set to DVD')
+        return self._read_reply(r, 202, f'Boot set to {device}')
+
+    def next_boot_virtual(self) -> CommandReply:
+        return self.set_next_boot("VCD-DVD")
 
     def next_boot_pxe(self) -> CommandReply:
-        """Set next boot to PXE"""
-        url = self.mgr_path + '/Actions/Oem/EID_674_Manager.ImportSystemConfiguration'
-        payload = {"ShareParameters":
-                       {"Target": "ALL"},
-                   "ImportBuffer":
-                       '<SystemConfiguration><Component FQDD="iDRAC.Embedded.1">'
-                       '<Attribute Name="ServerBoot.1#BootOnce">Enabled</Attribute>'
-                       '<Attribute Name="ServerBoot.1#FirstBootDevice">PXE</Attribute></Component></SystemConfiguration>'}
-        r = self.redfish_client.post(url, body=payload)
-        return self._read_reply(r, 202, 'Boot set to PXE')
+        return self.set_next_boot("PXE")
+
+    def next_boot_bios(self) -> CommandReply:
+        return self.set_next_boot("BIOSSetup")
 
     def _check(self, response, code:int=200):
         """Raise exception if invalid code"""

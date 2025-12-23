@@ -16,8 +16,14 @@ accounts = "scripts.accounts:main"
 tsr = "scripts.tsr:main"
 attribute = "scripts.attribute:main"
 network = "scripts.network:main"
+summary = "scripts.summary:main"
+info_collect = "scripts.info:main"
 
 
 [tool.setuptools]
 package-dir = { "" = "src"}
 
+
+[[tool.uv.index]]
+name = "nmrbox"
+url = "https://apt.nmrbox.org/pip"
