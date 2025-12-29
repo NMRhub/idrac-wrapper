@@ -15,7 +15,6 @@ import yaml
 from idrac.idracaccessor import IdracAccessor, ilogger
 from scripts import get_password, IdracSelector
 
-
 class DotAccess:
 
     @staticmethod
@@ -35,6 +34,13 @@ class DotAccess:
         if isinstance(v, dict): return DotAccess(v)
         if isinstance(v, list): return [self._wrap(i) for i in v]
         return v
+
+    def __getattr__(self, name):
+        if "." not in name: raise AttributeError(name)
+        obj = self
+        for part in name.split("."):
+            obj = getattr(obj, part)
+        return obj
 
     def raw(self) -> dict:
         return self._data
@@ -90,8 +96,9 @@ class InfoFromCheatsheet:
             ilogger.info(f"{rd.idrac} published")
             if dout:
                 # noinspection PyUnboundLocalVariable
-                with open(debug_path / rd.idrac, 'w') as f:
+                with open(df := debug_path / rd.idrac, 'w') as f:
                     print(json.dumps(rd.data, indent=2), file=f)
+                ilogger.debug(f"Dumped {df.as_posix()}")
             da = DotAccess(rd.data)
             if (value := getattr(da, self.result_path, None)) is not None:
                 collector[rd.idrac] = value

@@ -12,7 +12,7 @@ from idrac.idracclass import IDrac
 from scripts import get_password, IdracSelector
 from pprint import pprint
 
-"""Hacking version of command line driver"""
+"""Network operations"""
 
 
 def main():

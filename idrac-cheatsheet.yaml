@@ -1,3 +1,8 @@
 SSDFirmware:
   redfish path: /redfish/v1/Systems/System.Embedded.1/Storage/RAID.SL.1-1/Drives/Disk.Bay.1:Enclosure.Internal.0-1:RAID.SL.1-1
   result path: Revision
+
+IDRACPassthrough:
+  redfish path: /redfish/v1/Managers/iDRAC.Embedded.1/Oem/Dell/DellAttributes/iDRAC.Embedded.1
+  result path: Attributes.OS_BMC_1_AdminState 
+  

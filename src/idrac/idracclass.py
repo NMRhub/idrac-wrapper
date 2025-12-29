@@ -514,3 +514,9 @@ class IDrac:
 #        r = self.redfish_client.post(iurl,body=jdata)
 #        print(r)
 
+    def idrac_passthrough(self,enabled:bool):
+        value = "Enabled" if enabled else "Disabled"
+        payload = {'OS-BMC.1.AdminState':value}
+        self.set_attributes('idrac',payload)
+
+
