@@ -63,6 +63,7 @@ def main():
     parser.add_argument('--onlyip',action='store_true',help="Don't show idrac hostname, just ip")
     parser.add_argument('--config',default=DEFAULT_CFG,help='config file, if required')
     parser.add_argument('--wait',type=int,default=0,help='Wait in seconds for action')
+    parser.add_argument('--reboot',action='store_true',help="reboot sequence via power ops")
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--summary',action='store_true',help="Show quick summary")
@@ -78,13 +79,12 @@ def main():
     group.add_argument('--eject-virtual',action='store_true',help="Disconnect Virtual CD/DVD/ISO")
     group.add_argument('--next-boot-virtual',action='store_true',help="Make next boot off Virtual CD/DVD/ISO")
     group.add_argument('--pxe-boot',action='store_true',help="Make next boot PXE")
-    group.add_argument('--pxe-now',action='store_true',help="PXE reboot now")
+    group.add_argument('--bios-boot',action='store_true',help="Make next boot BIOS")
     group.add_argument('--update',help="Apply update")
     group.add_argument('--tsr',action='store_true',help="Generate TSR to network share. Requires config")
     group.add_argument('--setarchive',help="Set NFS archive directory (ip:export)")
     group.add_argument('--last',help="Fetch last collection to NFS (ip:export)")
     group.add_argument('--get',nargs='?',help = "get attributes")
-    group.add_argument('--reboot',action='store_true',help="reboot sequence via power ops")
     group.add_argument('--schema',action='store_true',help="Dump schema")
 
 
@@ -133,15 +133,14 @@ def main():
             cr = idrac.next_boot_virtual()
         if args.pxe_boot:
             cr = idrac.next_boot_pxe()
-        if args.pxe_now:
-            cr = idrac.next_boot_pxe()
-            reboot(idrac)
+        if args.bios_boot:
+            cr = idrac.next_boot_bios()
         if args.update:
             idrac.update(args.update)
         if args.tsr:
             idrac.tsr(read_config(args.config))
         if args.wait:
-            deadline = (start := datetime.datetime.now()) + datetime.timedelta(seconds=args.wait)
+            #deadline = (start := datetime.datetime.now()) + datetime.timedelta(seconds=args.wait)
             if cr is not None and cr.job is not None and cr.job != 0:
                 print(f'{cr.msg} {cr.job}\nWaiting for completion')
                 idrac.wait_for(cr.job)

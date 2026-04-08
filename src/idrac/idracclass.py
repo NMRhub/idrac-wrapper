@@ -317,10 +317,10 @@ class IDrac:
                     rdata = json.loads(r2.text)
                     result.append(VirtualMedia(rdata))
                 else:
-                    return self._read_reply(200, "get virtual")
+                    return self._read_reply(200, "get virtual",'')
             return CommandReply(True, "Devices", result)
         # else implicit
-        return self._read_reply(200, "get virtual")
+        return self._read_reply(200, "get virtual",'')
 
     def set_next_boot(self, device: str) -> CommandReply:
         """
@@ -514,9 +514,169 @@ class IDrac:
 #        r = self.redfish_client.post(iurl,body=jdata)
 #        print(r)
 
+    def recent_alerts(self, count: int = 10) -> list[dict]:
+        """Get recent SEL log entries, most recent first. Supports iDRAC 8 and 9."""
+        for path in (
+            '/redfish/v1/Managers/iDRAC.Embedded.1/LogServices/Sel/Entries',  # iDRAC 9
+            '/redfish/v1/Managers/iDRAC.Embedded.1/Logs/Sel',                 # iDRAC 8
+        ):
+            try:
+                data = json.loads(self.query(path))
+                members = data.get('Members', [])
+                ilogger.debug(f"{self.idracname} {path}: {len(members)} member(s)")
+                if not members:
+                    continue
+                # Take the most recent `count` before fetching (avoids fetching the full log)
+                entries = []
+                for m in members[-count:]:
+                    # iDRAC 8 returns link stubs; follow the link to get entry fields
+                    if 'Message' not in m and '@odata.id' in m:
+                        ilogger.debug(f"{self.idracname} fetching entry {m['@odata.id']}")
+                        try:
+                            m = json.loads(self.query(m['@odata.id']))
+                        except ValueError as e:
+                            ilogger.warning(f"{self.idracname} could not fetch {m['@odata.id']}: {e}")
+                    ilogger.debug(f"{self.idracname} entry keys: {list(m.keys())}")
+                    entries.append(m)
+                return list(reversed(entries))
+            except ValueError as e:
+                ilogger.debug(f"{self.idracname} {path} failed: {e}")
+                continue
+        ilogger.warning(f"{self.idracname} no log path succeeded")
+        return []
+
+    def active_faults(self) -> list[dict]:
+        """Get active fault list (what the web UI shows as health causes). Supports iDRAC 8 and 9."""
+        for path in (
+            '/redfish/v1/Systems/System.Embedded.1/LogServices/FaultList/Entries',  # iDRAC 9
+            '/redfish/v1/Managers/iDRAC.Embedded.1/Logs/FaultList',                 # iDRAC 8
+        ):
+            try:
+                data = json.loads(self.query(path))
+                members = data.get('Members', [])
+                ilogger.debug(f"{self.idracname} {path}: {len(members)} fault(s)")
+                if not members:
+                    continue
+                entries = []
+                for m in members:
+                    if 'Message' not in m and '@odata.id' in m:
+                        try:
+                            m = json.loads(self.query(m['@odata.id']))
+                        except ValueError as e:
+                            ilogger.warning(f"{self.idracname} could not fetch {m['@odata.id']}: {e}")
+                    entries.append(m)
+                # Discard OK-severity metadata entries (e.g. "Log cleared.")
+                faults = [e for e in entries if e.get('Severity', 'OK') != 'OK']
+                if not faults:
+                    continue
+                return faults
+            except ValueError as e:
+                ilogger.debug(f"{self.idracname} {path} failed: {e}")
+                continue
+        return []
+
+    def component_health_issues(self) -> list[dict]:
+        """Walk subsystem health to find non-OK components (fallback when fault log is unavailable)."""
+        issues = []
+
+        def _entry(severity, message):
+            return {'Severity': severity, 'Message': message, 'Created': ''}
+
+        # Storage: controllers and drives
+        try:
+            data = json.loads(self.query('/redfish/v1/Systems/System.Embedded.1/Storage'))
+            for ctrl_ref in data.get('Members', []):
+                try:
+                    ctrl = json.loads(self.query(ctrl_ref['@odata.id']))
+                    ctrl_name = ctrl.get('Name', ctrl.get('Id', ctrl_ref['@odata.id']))
+                    ctrl_health = ctrl.get('Status', {}).get('Health', 'OK')
+                    if ctrl_health and ctrl_health != 'OK':
+                        issues.append(_entry(ctrl_health, f"Storage controller {ctrl_name}: health {ctrl_health}"))
+                    for drive_ref in ctrl.get('Drives', []):
+                        try:
+                            drive = json.loads(self.query(drive_ref['@odata.id']))
+                            health = drive.get('Status', {}).get('Health', 'OK')
+                            if health and health != 'OK':
+                                name = drive.get('Name', drive.get('Id', ''))
+                                fp = drive.get('FailurePredicted', False)
+                                msg = f"Drive {name} on {ctrl_name}: health {health}"
+                                if fp:
+                                    msg += ' (failure predicted)'
+                                issues.append(_entry(health, msg))
+                        except ValueError:
+                            pass
+                except ValueError:
+                    pass
+        except ValueError:
+            pass
+
+        # Simple storage (removable flash, SD cards, USB drives)
+        try:
+            data = json.loads(self.query('/redfish/v1/Systems/System.Embedded.1/SimpleStorage'))
+            for ctrl_ref in data.get('Members', []):
+                try:
+                    ctrl = json.loads(self.query(ctrl_ref['@odata.id']))
+                    ctrl_name = ctrl.get('Name', ctrl.get('Id', ctrl_ref['@odata.id']))
+                    for device in ctrl.get('Devices', []):
+                        health = device.get('Status', {}).get('Health', 'OK')
+                        if health and health != 'OK':
+                            name = device.get('Name', '')
+                            issues.append(_entry(health, f"Device {name} on {ctrl_name}: health {health}"))
+                except ValueError:
+                    pass
+        except ValueError:
+            pass
+
+        # Power supplies
+        try:
+            data = json.loads(self.query('/redfish/v1/Chassis/System.Embedded.1/Power'))
+            for psu in data.get('PowerSupplies', []):
+                health = psu.get('Status', {}).get('Health', 'OK')
+                if health and health != 'OK':
+                    name = psu.get('Name', psu.get('MemberId', ''))
+                    issues.append(_entry(health, f"PSU {name}: health {health}"))
+        except ValueError:
+            pass
+
+        # Fans / thermal
+        try:
+            data = json.loads(self.query('/redfish/v1/Chassis/System.Embedded.1/Thermal'))
+            for fan in data.get('Fans', []):
+                health = fan.get('Status', {}).get('Health', 'OK')
+                if health and health != 'OK':
+                    name = fan.get('Name', fan.get('MemberId', ''))
+                    issues.append(_entry(health, f"Fan {name}: health {health}"))
+        except ValueError:
+            pass
+
+        # Processors
+        try:
+            data = json.loads(self.query('/redfish/v1/Systems/System.Embedded.1/Processors'))
+            for cpu_ref in data.get('Members', []):
+                try:
+                    cpu = json.loads(self.query(cpu_ref['@odata.id']))
+                    health = cpu.get('Status', {}).get('Health', 'OK')
+                    if health and health != 'OK':
+                        name = cpu.get('Name', cpu.get('Id', ''))
+                        issues.append(_entry(health, f"Processor {name}: health {health}"))
+                except ValueError:
+                    pass
+        except ValueError:
+            pass
+
+        ilogger.debug(f"{self.idracname} component_health_issues: {len(issues)} issue(s)")
+        return issues
+
     def idrac_passthrough(self,enabled:bool):
+        EKEY = 'OS-BMC.1.AdminState'
         value = "Enabled" if enabled else "Disabled"
-        payload = {'OS-BMC.1.AdminState':value}
-        self.set_attributes('idrac',payload)
+        attr = self.get_attributes('idrac')
+        current = attr['Attributes'][EKEY]
+        if current != value:
+            payload = {EKEY:value}
+            ilogger.info(f"Setting {self.idracname} {payload}")
+            self.set_attributes('idrac',payload)
+        else:
+            ilogger.debug(f"{self.idracname} passthrough already {value}")
 
 
