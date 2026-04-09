@@ -49,6 +49,7 @@ class IDrac:
     class Summary:
         """Basic iDrac information"""
         idrac: str
+        idrac_hostname: str
         hostname: str
         service_tag: str
         power: str
@@ -58,11 +59,14 @@ class IDrac:
         def __post_init__(self):
             self.ip = socket.gethostbyname(self.idrac)
 
-
         def __str__(self):
+            idrac_name = self.idrac_hostname or self.idrac
+            label = self.idrac
+            if idrac_name and idrac_name != self.idrac:
+                label = f"{self.idrac} [{idrac_name}]"
             if self.only_ip:
-                return f"{self.ip} {self.hostname} {self.service_tag} {self.power} health {self.health}"
-            return f"iDRAC: {self.idrac} {self.ip} {self.hostname} {self.service_tag} server: {self.power} health {self.health}"
+                return f"{self.ip} {label} {self.hostname} {self.service_tag} {self.power} health {self.health}"
+            return f"iDRAC: {label} {self.ip} {self.hostname} {self.service_tag} server: {self.power} health {self.health}"
 
 
 
@@ -108,7 +112,19 @@ class IDrac:
     def summary(self) -> Summary:
         """Get quick summary of iDrac"""
         s = self._system
-        return IDrac.Summary(self.idracname, s['HostName'], s['SKU'], s['PowerState'], s['Status']['Health'])
+        idrac_hostname = self._idrac_hostname()
+        return IDrac.Summary(self.idracname, idrac_hostname, s['HostName'], s['SKU'], s['PowerState'], s['Status']['Health'])
+
+    def _idrac_hostname(self) -> str:
+        """Read the iDRAC's configured name from NIC.1.DNSRacName attribute."""
+        try:
+            attrs = self.get_attributes('idrac', 'NIC.1.DNSRacName')
+            name = attrs.get('Attributes', {}).get('NIC.1.DNSRacName', '')
+            if name:
+                return name
+        except Exception:
+            pass
+        return self.idracname
 
     @property
     def xml_metdata(self):
@@ -666,6 +682,12 @@ class IDrac:
 
         ilogger.debug(f"{self.idracname} component_health_issues: {len(issues)} issue(s)")
         return issues
+
+    def set_dns_name(self, name: str):
+        """Set DNS iDRAC Name (NIC.1.DNSRacName)"""
+        payload = {'NIC.1.DNSRacName': name}
+        ilogger.info(f"Setting {self.idracname} DNS iDRAC Name to {name!r}")
+        self.set_attributes('idrac', payload)
 
     def idrac_passthrough(self,enabled:bool):
         EKEY = 'OS-BMC.1.AdminState'

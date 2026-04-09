@@ -87,6 +87,7 @@ def main():
     group.add_argument('--get',nargs='?',help = "get attributes")
     group.add_argument('--schema',action='store_true',help="Dump schema")
     group.add_argument('--passthrough',choices=['on','off'],metavar='{on,off}',help="Enable or disable iDRAC connectivity pass-through (iDRAC 9)")
+    group.add_argument('--set-dns-name',metavar='NAME',help="Set DNS iDRAC Name (NIC.1.DNSRacName)")
 
 
     args = parser.parse_args()
@@ -155,6 +156,8 @@ def main():
             print(idrac.schemas)
         if args.passthrough:
             idrac.idrac_passthrough(args.passthrough == 'on')
+        if args.set_dns_name:
+            idrac.set_dns_name(args.set_dns_name)
 
 
 if __name__ == "__main__":
