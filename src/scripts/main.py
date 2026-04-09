@@ -86,6 +86,7 @@ def main():
     group.add_argument('--last',help="Fetch last collection to NFS (ip:export)")
     group.add_argument('--get',nargs='?',help = "get attributes")
     group.add_argument('--schema',action='store_true',help="Dump schema")
+    group.add_argument('--passthrough',choices=['on','off'],metavar='{on,off}',help="Enable or disable iDRAC connectivity pass-through (iDRAC 9)")
 
 
     args = parser.parse_args()
@@ -152,6 +153,8 @@ def main():
             reboot(idrac)
         if args.schema:
             print(idrac.schemas)
+        if args.passthrough:
+            idrac.idrac_passthrough(args.passthrough == 'on')
 
 
 if __name__ == "__main__":
