@@ -21,6 +21,7 @@ def main():
     selector = IdracSelector(parser)
     parser.add_argument('--filter',nargs=2,help="Filter selected attribute")
     parser.add_argument('--print-only',action='store_false',help="If not set, an idrac comment is added for switch connections")
+    parser.add_argument('--only-up',action='store_true',help="With --switch, only show connections whose port link is up")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--nic',action='store_true')
     group.add_argument('--adapter',action='store_true')
@@ -53,7 +54,7 @@ def main():
                     print(idrac.nics)
                 if args.switch:
                     try:
-                        sc = idrac.switch_connections()
+                        sc = idrac.switch_connections(only_up=args.only_up)
                         summary = idrac.summary
                         for pi in sc:
                             print(f"{pi.host},{pi.interface},{pi.mac_address},{pi.port_id},{summary.hostname}")

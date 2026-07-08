@@ -205,8 +205,36 @@ class IDrac:
         s = self.query(apath)
         return json.loads(s)
 
-    def switch_connections(self):
+    def port_link_status(self):
+        """Map of NetworkPort FQDD -> LinkStatus (e.g. 'Up' / 'Down')."""
+        rval = {}
+        try:
+            coll = json.loads(self.query('/redfish/v1/Systems/System.Embedded.1/NetworkPorts'))
+        except Exception as e:
+            ilogger.debug(f"{self.idracname} NetworkPorts query failed: {e}")
+            return rval
+        for member in coll.get('Members', []):
+            url = member.get('@odata.id')
+            if not url:
+                continue
+            try:
+                port = json.loads(self.query(url))
+            except Exception as e:
+                ilogger.debug(f"{self.idracname} {url} query failed: {e}")
+                continue
+            pid = port.get('Id')
+            if pid is not None:
+                rval[pid] = port.get('LinkStatus')
+        return rval
+
+    @staticmethod
+    def _link_up(fqdd, link_status):
+        """True only when the port's LinkStatus is explicitly up."""
+        return link_status.get(fqdd) in ('Up', 'LinkUp')
+
+    def switch_connections(self, only_up=False):
         rval = []
+        link_status = self.port_link_status() if only_up else {}
         path = '/redfish/v1/Systems/System.Embedded.1/NetworkPorts/Oem/Dell/DellSwitchConnections'
         s = self.query(path)
         data = json.loads(s)
@@ -215,6 +243,9 @@ class IDrac:
             sp = m['SwitchPortConnectionID']
             if sl != 'No Link':
                 iname = m['FQDD']
+                if only_up and not self._link_up(iname, link_status):
+                    ilogger.debug(f"{self.idracname} skipping {iname}, link not up ({link_status.get(iname)})")
+                    continue
                 rval.append(PortInfo(self.idracname, iname, sl, sp))
 
         return rval
